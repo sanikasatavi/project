@@ -9,10 +9,10 @@ import requests
 import numpy as np
 import requests
 
-earthquake_data = pd.read_csv("Cleaned_Earthquakes_India.csv")
+earthquake_data = pd.read_csv("Cleaned_Earthquakes.csv")
 earthquake_data['year'] = pd.to_datetime(earthquake_data['time'], errors='coerce').dt.year
 
-flood_data = pd.read_csv("Cleaned_Floods_India.csv")
+flood_data = pd.read_csv("Cleaned_Floods.csv")
 if 'Year' not in flood_data.columns:
     flood_data['Year'] = 2023  
 
