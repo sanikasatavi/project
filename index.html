@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disaster Prediction</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        #map {
+            height: 400px;
+            width: 80%;
+            margin: 20px auto;
+        }
+        .chart-container {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+        }
+        .chart-box {
+            width: 45%;
+        }
+        .popup {
+            display: none;
+            position: fixed;
+            top: 10%;
+            left: 50%;
+            transform: translate(-50%, 0);
+            background-color: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            text-align: center;
+        }
+        .popup button {
+            margin-top: 10px;
+            padding: 5px 10px;
+            border: none;
+            background-color: #007BFF;
+            color: white;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+    
+        .navbar {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            background-color: rgba(84, 187, 222, 0.8);
+            padding: 10px 25px;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            transform: skewX(-10deg);
+        }
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 15px;
+            font-size: 14px;
+            font-weight: bold;
+            transition: 0.3s;
+            transform: skewX(10deg);
+        }
+        .navbar a:hover {
+            color: #181003;
+        }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <a href="dshome.html">Home</a>
+        <a href="index.html">Predict</a>
+        <a href="about.html">About</a>
+        <a href="account.html">Account</a>
+    </div>
+
+    <h2>Disaster Risk Prediction</h2>
+    
+    <label for="location">Location:</label>
+    <input type="text" id="location" placeholder="E.g., Delhi, Mumbai">
+    
+    <label for="year">Year:</label>
+    <input type="number" id="year" placeholder="E.g., 2025">
+    
+    <button onclick="predictDisaster()">Predict</button>
+
+    <h3>Prediction Results</h3>
+    <div id="map"></div>
+
+    <div class="chart-container" id="chartSection">
+        <div class="chart-box">
+            <canvas id="earthquakeChart"></canvas>
+        </div>
+        <div class="chart-box">
+            <canvas id="floodChart"></canvas>
+        </div>
+    </div>
+
+    <div id="resultPopup" class="popup">
+        <h3>Disaster Risk Prediction</h3>
+        <p id="popupContent"></p>
+        <button onclick="closePopup()">Close</button>
+    </div>
+
+    
+
+    <script>
+        let map = L.map('map').setView([20.5937, 78.9629], 5);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap France | Contributors'
+        }).addTo(map);
+
+        let locationMarker;
+        let earthquakeChart = null, floodChart = null;
+
+
+
+        function predictDisaster() {
+            let location = document.getElementById("location").value;
+            let year = parseInt(document.getElementById("year").value);
+
+            if (!location || isNaN(year)) {
+                alert("Please enter a valid location and year.");
+                return;
+            }
+
+            let data = { location, year };
+            
+            fetch("http://127.0.0.1:5000/predict", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert("Error: " + data.error);
+                } else {
+                    let eqRisk = parseFloat(data.earthquake_risk);
+                    let floodRisk = parseFloat(data.flood_risk);
+                    
+                    earthquakeChart = updateChart("earthquakeChart", "Earthquake Risk", eqRisk, earthquakeChart);
+                    floodChart = updateChart("floodChart", "Flood Risk", floodRisk, floodChart);
+                    
+                    document.getElementById("popupContent").innerText = `Earthquake Risk: ${eqRisk}%\nFlood Risk: ${floodRisk}%`;
+                    document.getElementById("resultPopup").style.display = "block";
+                    
+                    document.getElementById("chartSection").scrollIntoView({ behavior: 'smooth' });
+                    
+                    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${location}`)
+                        .then(res => res.json())
+                        .then(locData => {
+                            if (locData.length > 0) {
+                                let lat = locData[0].lat;
+                                let lon = locData[0].lon;
+                                
+                                if (locationMarker) {
+                                    map.removeLayer(locationMarker);
+                                }
+                                locationMarker = L.marker([lat, lon]).addTo(map)
+                                    .bindPopup(`<b>${location}</b>`)
+                                    .openPopup();
+                                map.setView([lat, lon], 6);
+                            }
+                        });
+                }
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                alert("Failed to fetch data. Ensure the server is running.");
+            });
+        }
+
+        function updateChart(chartId, label, risk, chartInstance) {
+            if (chartInstance !== null) {
+                chartInstance.destroy();
+            }
+            let ctx = document.getElementById(chartId).getContext('2d');
+            return new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: [label],
+                    datasets: [{
+                        label: 'Risk Level (%)',
+                        data: [risk],
+                        backgroundColor: risk < 20 ? 'green' : risk < 50 ? 'orange' : risk < 75 ? 'red' : 'darkred'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        function closePopup() {
+            document.getElementById("resultPopup").style.display = "none";
+        }
+    </script>
+
+</body>
+</html>
